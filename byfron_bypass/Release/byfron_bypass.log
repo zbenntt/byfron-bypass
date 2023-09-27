@@ -1,6 +1,7 @@
 ﻿  byfron_bypass.cpp
   Generating code
-  Previous IPDB and IOBJ mismatch, fall back to full compilation.
-  All 87 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  1 of 87 functions ( 1.1%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    2 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
   byfron_bypass.vcxproj -> C:\Users\chudi\source\repos\byfron_bypass\Release\byfron_bypass.exe

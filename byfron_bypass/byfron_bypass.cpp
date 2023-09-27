@@ -150,7 +150,7 @@ int main() {
         PrintPrivileges(hToken);
         std::cout << "Bypassed Byfron, (ENABLED ALL THREADS) - you will have to write some code that will hook into the thread that has all permissions enabled" << std::endl;
         std::cout << "Show Some love to Nano for creating this bypass my Discord is N..#5540";
-        std::cout << "Discord Server: https://discord.gg/H58pNXsXzP"
+        std::cout << "Discord Server: https://discord.gg/H58pNXsXzP" << std::endl;
     }
     else {
         std::cerr << "Failed to obtain target thread ID or enable privileges." << std::endl;
