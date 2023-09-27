@@ -7,10 +7,11 @@ So how do you bypass byfron on the web version of roblox. Well it's actually eas
 
 ### Compile
 Open up ``MVC`` and open the .sln file in the editor, select release and for ``x86`` then hit build.
-After go to the build location and open up a cmd window, and run bypass_byfron.exe
+After go to the build location and open up a cmd window, and run bypass_byfron.exe in a ADMIN CMD WINDOW
 
 ### Warning
 This just shows how to get more privlages in the process threads, you will have to change up the code to inject a dll after it bypassed the privileges with the current thread 
 
 ### Example
-![image](https://github.com/l4tt/byfron-bypass/assets/97377137/af0ee5d7-02b7-477d-932d-3935f3724e5a)
+![image](https://github.com/l4tt/byfron-bypass/assets/97377137/4d500717-93df-4cce-a2a3-e3c432570ea0)
+
