@@ -1,11 +1,92 @@
 #include <iostream>
 #include <Windows.h>
-#include <tlhelp32.h>
-#include <string>
+#include <TlHelp32.h>
 #include <vector>
 #include <Psapi.h>
 
+// Function to enable the SE_DEBUG_NAME privilege for a given process and return the target thread ID
+std::pair<DWORD, HANDLE> EnableAllPrivilegesForProcess(const wchar_t* targetModuleName) {
+    DWORD targetThreadId = 0;
+    HANDLE hToken = NULL;
 
+    // Find the RobloxPlayerBeta.exe process by name
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+    if (hSnapshot != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32 processEntry;
+        processEntry.dwSize = sizeof(PROCESSENTRY32);
+        if (Process32First(hSnapshot, &processEntry)) {
+            do {
+                if (_wcsicmp(processEntry.szExeFile, targetModuleName) == 0) {
+                    DWORD processId = processEntry.th32ProcessID;
+
+                    // Attempt to open the process handle
+                    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processId);
+                    if (hProcess != NULL) {
+                        // Attempt to open the process token
+                        if (OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
+                            // Enable all privileges for the process token
+                            TOKEN_PRIVILEGES tokenPrivileges;
+                            tokenPrivileges.PrivilegeCount = 4;  // Set count to 0 to enable all privileges
+
+                            TCHAR processName[MAX_PATH];
+                            if (GetProcessImageFileName(hProcess, processName, MAX_PATH) > 0) {
+                                std::wcout << L"The process name for the elevated thread is: " << processName << std::endl;
+                            }
+
+                            if (AdjustTokenPrivileges(hToken, FALSE, &tokenPrivileges, sizeof(TOKEN_PRIVILEGES), NULL, NULL)) {
+                                // Close the process handle
+                                CloseHandle(hProcess);
+
+                                // Take a snapshot of the threads in the specified process
+                                HANDLE hThreadSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+                                if (hThreadSnapshot != INVALID_HANDLE_VALUE) {
+                                    THREADENTRY32 threadEntry = { sizeof(THREADENTRY32) };
+                                    if (Thread32First(hThreadSnapshot, &threadEntry)) {
+                                        do {
+                                            if (threadEntry.th32OwnerProcessID == processId) {
+                                                // Optionally, you can add additional checks here to determine the target thread
+                                                targetThreadId = threadEntry.th32ThreadID;
+                                                break;
+                                            }
+                                        } while (Thread32Next(hThreadSnapshot, &threadEntry));
+                                    }
+                                    CloseHandle(hThreadSnapshot);
+                                }
+                            }
+                            else {
+                                std::cerr << "Failed to enable all privileges for the process token. Error: " << GetLastError() << std::endl;
+                                CloseHandle(hToken);  // Close the token handle in case of failure
+                                CloseHandle(hProcess);
+                            }
+                        }
+                        else {
+                            std::cerr << "Failed to open process token. Error: " << GetLastError() << std::endl;
+                            CloseHandle(hProcess);  // Close the process handle in case of failure
+                        }
+                    }
+                    else {
+                        std::cerr << "Failed to open target process. Error: " << GetLastError() << std::endl;
+                    }
+
+                    // Break the loop once the target process is found
+                    break;
+                }
+            } while (Process32Next(hSnapshot, &processEntry));
+        }
+        else {
+            std::cerr << "Process32First failed. Error: " << GetLastError() << std::endl;
+        }
+        CloseHandle(hSnapshot);
+    }
+    else {
+        std::cerr << "CreateToolhelp32Snapshot failed. Error: " << GetLastError() << std::endl;
+    }
+
+    return std::make_pair(targetThreadId, hToken);
+}
+
+// Function to retrieve and print the permissions of a thread
 void PrintPrivileges(HANDLE hToken) {
     DWORD dwLengthNeeded;
     if (!GetTokenInformation(hToken, TokenPrivileges, NULL, 0, &dwLengthNeeded) && GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
@@ -52,111 +133,32 @@ void PrintPrivileges(HANDLE hToken) {
 }
 
 
-bool ElevateProcessPrivileges(DWORD processId) {
-    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS | PROCESS_CREATE_THREAD, FALSE, processId);
-
-    if (hProcess == NULL) {
-        std::cerr << "Failed to open the target process. Error: " << GetLastError() << std::endl;
-        return false;
-    }
-
-    HANDLE hToken;
-    if (!OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-        std::cerr << "Failed to open process token. Error: " << GetLastError() << std::endl;
-        CloseHandle(hProcess);
-        return false;
-    }
-
-    // Enumerate all privileges and enable them
-    DWORD dwLengthNeeded;
-    if (!GetTokenInformation(hToken, TokenPrivileges, NULL, 0, &dwLengthNeeded) && GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
-        std::cerr << "Failed to retrieve token privileges. Error: " << GetLastError() << std::endl;
-        CloseHandle(hToken);
-        CloseHandle(hProcess);
-        return false;
-    }
-
-    PTOKEN_PRIVILEGES tokenPrivileges = reinterpret_cast<PTOKEN_PRIVILEGES>(new BYTE[dwLengthNeeded]);
-
-    if (!GetTokenInformation(hToken, TokenPrivileges, tokenPrivileges, dwLengthNeeded, &dwLengthNeeded)) {
-        std::cerr << "Failed to retrieve token privileges. Error: " << GetLastError() << std::endl;
-        delete[] tokenPrivileges;
-        CloseHandle(hToken);
-        CloseHandle(hProcess);
-        return false;
-    }
-
-    for (DWORD i = 0; i < tokenPrivileges->PrivilegeCount; i++) {
-        tokenPrivileges->Privileges[i].Attributes = SE_PRIVILEGE_ENABLED;
-    }
-
-    if (!AdjustTokenPrivileges(hToken, FALSE, tokenPrivileges, 0, NULL, NULL)) {
-        std::cerr << "Failed to adjust token privileges. Error: " << GetLastError() << std::endl;
-        delete[] tokenPrivileges;
-        CloseHandle(hToken);
-        CloseHandle(hProcess);
-        return false;
-    }
-
-    if (GetLastError() == ERROR_NOT_ALL_ASSIGNED) {
-        std::cerr << "Not all privileges were assigned." << std::endl;
-        delete[] tokenPrivileges;
-        CloseHandle(hToken);
-        CloseHandle(hProcess);
-        return false;
-    }
-
-    // Obtain the process name
-    TCHAR processName[MAX_PATH];
-    if (GetProcessImageFileName(hProcess, processName, MAX_PATH) > 0) {
-        std::wcout << L"The process name for the elevated thread is: " << processName << std::endl;
-    }
-    PrintPrivileges(hToken);
-    delete[] tokenPrivileges;
-    CloseHandle(hToken);
-    CloseHandle(hProcess);
-    return true;
-}
 
 int main() {
-    const wchar_t* targetProcessName = L"RobloxPlayerBeta.exe";
-    DWORD targetProcessId = 0;
-    // Find the RobloxPlayerBeta.exe process by name
-    DWORD currentProcessId = GetCurrentProcessId();
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    
+    const wchar_t* targetModuleName = L"RobloxPlayerBeta.exe";
 
-    if (hSnapshot != INVALID_HANDLE_VALUE) {
-        PROCESSENTRY32 processEntry;
-        processEntry.dwSize = sizeof(PROCESSENTRY32);
-        if (Process32First(hSnapshot, &processEntry)) {
-            do {
-                if (wcscmp(processEntry.szExeFile, targetProcessName) == 0) {
-                    if (processEntry.th32ProcessID != currentProcessId) {
-                        // Exclude the current process
-                        targetProcessId = processEntry.th32ProcessID;
-                        break;
-                    }
-                }
-            } while (Process32Next(hSnapshot, &processEntry));
-        }
-        CloseHandle(hSnapshot);
-    }
+    // Enable SE_DEBUG_NAME privilege for the specified module and get the target thread ID
+    std::pair<DWORD, HANDLE> result = EnableAllPrivilegesForProcess(targetModuleName);
+    DWORD targetThreadId = result.first;
+    HANDLE hToken = result.second;
 
-    if (targetProcessId == 0) {
-        std::cerr << "Target process not found." << std::endl;
-        return 1;
-    }
-
-    // Enumerate threads within the target process
-    if (ElevateProcessPrivileges(targetProcessId)) {
-        std::cout << "Privileges elevated successfully for process with ID " << targetProcessId << std::endl;
+    if (targetThreadId != 0) {
+        // You have elevated privileges for the target thread
+        // Proceed with your operations on that thread
+        std::cout << "Elevated privileges granted for thread with ID: " << targetThreadId << std::endl;
+        PrintPrivileges(hToken);
+        std::cout << "Bypassed Byfron, (ENABLED ALL THREADS) - you will have to write some code that will hook into the thread that has all permissions enabled" << std::endl;
+        std::cout << "Show Some love to Nano for creating this bypass my Discord is N..#5540";
+        std::cout << "Discord Server: https://discord.gg/H58pNXsXzP"
     }
     else {
-        std::cerr << "Failed to elevate privileges for process with ID " << targetProcessId << std::endl;
+        std::cerr << "Failed to obtain target thread ID or enable privileges." << std::endl;
     }
 
-    // ...
-    system("pause");
+    if (hToken != NULL) {
+        CloseHandle(hToken);  // Close the token handle
+    }
 
     return 0;
 }

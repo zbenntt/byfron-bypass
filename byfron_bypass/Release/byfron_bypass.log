@@ -1,2 +1,6 @@
 ﻿  byfron_bypass.cpp
-LINK : fatal error LNK1104: cannot open file 'C:\Users\chudi\source\repos\byfron_bypass\Release\byfron_bypass.exe'
+  Generating code
+  Previous IPDB and IOBJ mismatch, fall back to full compilation.
+  All 87 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  byfron_bypass.vcxproj -> C:\Users\chudi\source\repos\byfron_bypass\Release\byfron_bypass.exe
